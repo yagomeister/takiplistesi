@@ -38,7 +38,9 @@
   dialog { border:0; border-radius:14px; padding:18px; width:min(92vw,420px); background:var(--card); color:var(--ink); }
   dialog::backdrop { background:rgba(0,0,0,.45); }
   label { display:block; font-size:13px; color:var(--muted); margin:12px 0 4px; }
-  input[type=text], input[type=date], select, textarea { width:100%; font:inherit; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); }
+  input[type=text], input[type=password], input[type=date], select, textarea { width:100%; font:inherit; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); }
+  .login form { max-width:320px; margin:0 auto; text-align:left; }
+  .login form button { width:100%; margin-top:18px; }
   .row { display:flex; gap:10px; margin-top:18px; }
   .row button { flex:1; padding:12px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--ink); font-size:15px; }
   .row .primary { background:var(--accent); color:#fff; border-color:var(--accent); }
@@ -54,9 +56,14 @@
 
 <main>
   <section id="login" class="login">
-    <p>Devam etmek için Google hesabınızla giriş yapın.</p>
-    <button id="loginBtn">Google ile giriş yap</button>
-    <div id="loginErr" class="err"></div>
+    <form id="loginForm">
+      <label for="lUser">Kullanıcı adı</label>
+      <input type="text" id="lUser" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+      <label for="lPass">Şifre</label>
+      <input type="password" id="lPass" autocomplete="current-password" required>
+      <button type="submit" id="loginBtn">Giriş yap</button>
+      <div id="loginErr" class="err"></div>
+    </form>
   </section>
 
   <section id="app" class="hidden">
@@ -86,9 +93,9 @@
 </dialog>
 
 <script type="module">
-import { firebaseConfig, PEOPLE } from "./config.js";
+import { firebaseConfig, PEOPLE, EMAIL_DOMAIN } from "./config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const $ = (id) => document.getElementById(id);
@@ -101,10 +108,24 @@ const nameOf = (email) => (PEOPLE.find(p => p.email.toLowerCase() === (email||""
 let me = null, tasks = [], filter = "bekleyen", editingId = null, unsub = null;
 
 // ---- Giriş ----
-$("loginBtn").onclick = async () => {
+// Kullanıcı adı, arka planda "kullaniciadi@EMAIL_DOMAIN" biçimine çevrilir.
+$("loginForm").onsubmit = async (e) => {
+  e.preventDefault();
   $("loginErr").textContent = "";
-  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
-  catch (e) { $("loginErr").textContent = "Giriş yapılamadı: " + (e.code || e.message); }
+  const username = $("lUser").value.trim().toLowerCase();
+  const password = $("lPass").value;
+  $("loginBtn").disabled = true;
+  try {
+    await signInWithEmailAndPassword(auth, `${username}@${EMAIL_DOMAIN}`, password);
+    $("lPass").value = "";
+  } catch (err) {
+    const wrong = ["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found", "auth/invalid-email"];
+    $("loginErr").textContent = wrong.includes(err.code)
+      ? "Kullanıcı adı veya şifre hatalı."
+      : err.code === "auth/too-many-requests"
+        ? "Çok fazla deneme yapıldı, biraz bekleyip tekrar deneyin."
+        : "Giriş yapılamadı: " + (err.code || err.message);
+  } finally { $("loginBtn").disabled = false; }
 };
 $("logout").onclick = () => signOut(auth);
 
@@ -112,7 +133,7 @@ onAuthStateChanged(auth, (user) => {
   if (unsub) { unsub(); unsub = null; }
   const allowed = user && PEOPLE.some(p => p.email.toLowerCase() === (user.email||"").toLowerCase());
   if (user && !allowed) {
-    $("loginErr").textContent = user.email + " bu uygulamaya erişemez.";
+    $("loginErr").textContent = "Bu hesap uygulamaya erişemez.";
     signOut(auth); return;
   }
   me = allowed ? user : null;
