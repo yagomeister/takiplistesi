@@ -14,5 +14,6 @@ export const firebaseConfig = {
 export const EMAIL_DOMAIN = "takip.example.com";
 
 export const PEOPLE = [
-  { name: "Yağız", email: "yagiz@takip.example.com" }
+  { name: "Yağız", email: "yagiz@takip.example.com" },
+  { name: "Sinan", email: "sinan@takip.example.com" }
 ];
