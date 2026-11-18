@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f6f5e">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<title>Görevlerimiz</title>
+<style>
+  :root { --bg:#f4f6f5; --card:#fff; --ink:#1d2b27; --muted:#6b7a75; --accent:#2f6f5e; --line:#e1e7e4; --danger:#c0392b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#121816; --card:#1c2421; --ink:#e8efec; --muted:#93a39d; --accent:#4fa58f; --line:#2b3632; --danger:#e57365; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--accent); color:#fff; padding:14px 16px; padding-top:calc(14px + env(safe-area-inset-top)); display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:5; }
+  header h1 { font-size:18px; margin:0; }
+  header button { background:rgba(255,255,255,.2); color:#fff; border:0; border-radius:8px; padding:6px 10px; font-size:13px; }
+  main { max-width:640px; margin:0 auto; padding:12px 12px 100px; }
+  .login { text-align:center; padding:60px 20px; }
+  .login button { background:var(--accent); color:#fff; border:0; border-radius:10px; padding:14px 22px; font-size:16px; }
+  .filters { display:flex; gap:8px; overflow-x:auto; padding:4px 0 12px; }
+  .chip { border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:999px; padding:7px 14px; font-size:14px; white-space:nowrap; }
+  .chip.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .task { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; display:flex; gap:12px; align-items:flex-start; }
+  .task input[type=checkbox] { width:24px; height:24px; margin-top:2px; accent-color:var(--accent); flex:none; }
+  .task .body { flex:1; min-width:0; }
+  .task .title { font-size:16px; word-break:break-word; }
+  .task.done .title { text-decoration:line-through; color:var(--muted); }
+  .task .note { font-size:13px; color:var(--muted); margin-top:4px; white-space:pre-wrap; word-break:break-word; }
+  .meta { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; font-size:12px; }
+  .tag { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:2px 8px; color:var(--muted); }
+  .tag.late { color:var(--danger); border-color:var(--danger); }
+  .del { background:none; border:0; color:var(--muted); font-size:20px; padding:0 4px; }
+  .empty { text-align:center; color:var(--muted); padding:40px 0; }
+  .fab { position:fixed; right:18px; bottom:calc(18px + env(safe-area-inset-bottom)); width:58px; height:58px; border-radius:50%; background:var(--accent); color:#fff; border:0; font-size:30px; box-shadow:0 4px 14px rgba(0,0,0,.3); }
+  dialog { border:0; border-radius:14px; padding:18px; width:min(92vw,420px); background:var(--card); color:var(--ink); }
+  dialog::backdrop { background:rgba(0,0,0,.45); }
+  label { display:block; font-size:13px; color:var(--muted); margin:12px 0 4px; }
+  input[type=text], input[type=date], select, textarea { width:100%; font:inherit; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); }
+  .row { display:flex; gap:10px; margin-top:18px; }
+  .row button { flex:1; padding:12px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--ink); font-size:15px; }
+  .row .primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .err { color:var(--danger); font-size:14px; margin-top:14px; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Görevlerimiz</h1>
+  <button id="logout" class="hidden">Çıkış</button>
+</header>
+
+<main>
+  <section id="login" class="login">
+    <p>Devam etmek için Google hesabınızla giriş yapın.</p>
+    <button id="loginBtn">Google ile giriş yap</button>
+    <div id="loginErr" class="err"></div>
+  </section>
+
+  <section id="app" class="hidden">
+    <div class="filters" id="filters"></div>
+    <div id="list"></div>
+  </section>
+</main>
+
+<button class="fab hidden" id="fab" aria-label="Yeni görev">+</button>
+
+<dialog id="dlg">
+  <form method="dialog" id="form">
+    <h3 id="dlgTitle" style="margin:0">Yeni görev</h3>
+    <label for="fTitle">Görev</label>
+    <input type="text" id="fTitle" required maxlength="200" autocomplete="off">
+    <label for="fWho">Kime ait</label>
+    <select id="fWho"></select>
+    <label for="fDue">Son tarih (isteğe bağlı)</label>
+    <input type="date" id="fDue">
+    <label for="fNote">Not (isteğe bağlı)</label>
+    <textarea id="fNote" rows="3" maxlength="1000"></textarea>
+    <div class="row">
+      <button type="button" id="cancel">Vazgeç</button>
+      <button type="submit" class="primary">Kaydet</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module">
+import { firebaseConfig, PEOPLE } from "./config.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const $ = (id) => document.getElementById(id);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const tasksCol = collection(db, "tasks");
+
+const nameOf = (email) => (PEOPLE.find(p => p.email.toLowerCase() === (email||"").toLowerCase())?.name) || email || "—";
+let me = null, tasks = [], filter = "bekleyen", editingId = null, unsub = null;
+
+// ---- Giriş ----
+$("loginBtn").onclick = async () => {
+  $("loginErr").textContent = "";
+  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+  catch (e) { $("loginErr").textContent = "Giriş yapılamadı: " + (e.code || e.message); }
+};
+$("logout").onclick = () => signOut(auth);
+
+onAuthStateChanged(auth, (user) => {
+  if (unsub) { unsub(); unsub = null; }
+  const allowed = user && PEOPLE.some(p => p.email.toLowerCase() === (user.email||"").toLowerCase());
+  if (user && !allowed) {
+    $("loginErr").textContent = user.email + " bu uygulamaya erişemez.";
+    signOut(auth); return;
+  }
+  me = allowed ? user : null;
+  $("login").classList.toggle("hidden", !!me);
+  $("app").classList.toggle("hidden", !me);
+  $("fab").classList.toggle("hidden", !me);
+  $("logout").classList.toggle("hidden", !me);
+  if (me) {
+    unsub = onSnapshot(tasksCol, (snap) => {
+      tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      render();
+    }, (err) => { $("list").innerHTML = `<div class="empty">Veriler okunamadı: ${err.code}</div>`; });
+    render();
+  }
+});
+
+// ---- Liste ----
+const FILTERS = [["bekleyen","Bekleyenler"],["benim","Benim"],["biten","Bitenler"],["hepsi","Hepsi"]];
+function renderFilters() {
+  $("filters").innerHTML = FILTERS.map(([k,l]) => `<button class="chip ${filter===k?"on":""}" data-k="${k}">${l}</button>`).join("");
+  $("filters").querySelectorAll(".chip").forEach(b => b.onclick = () => { filter = b.dataset.k; render(); });
+}
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const today = () => new Date().toISOString().slice(0,10);
+
+function render() {
+  if (!me) return;
+  renderFilters();
+  let items = tasks.filter(t => {
+    if (filter === "bekleyen") return !t.done;
+    if (filter === "biten") return t.done;
+    if (filter === "benim") return !t.done && (t.who||"").toLowerCase() === me.email.toLowerCase();
+    return true;
+  });
+  items.sort((a,b) => (a.due||"9999") < (b.due||"9999") ? -1 : (a.due||"9999") > (b.due||"9999") ? 1 : 0);
+  if (!items.length) { $("list").innerHTML = `<div class="empty">Burada görev yok.</div>`; return; }
+  $("list").innerHTML = items.map(t => {
+    const late = t.due && !t.done && t.due < today();
+    return `<div class="task ${t.done?"done":""}" data-id="${t.id}">
+      <input type="checkbox" ${t.done?"checked":""} data-act="toggle">
+      <div class="body" data-act="edit">
+        <div class="title">${esc(t.title)}</div>
+        ${t.note ? `<div class="note">${esc(t.note)}</div>` : ""}
+        <div class="meta">
+          <span class="tag">👤 ${esc(nameOf(t.who))}</span>
+          ${t.due ? `<span class="tag ${late?"late":""}">📅 ${esc(t.due.split("-").reverse().join("."))}</span>` : ""}
+        </div>
+      </div>
+      <button class="del" data-act="del" aria-label="Sil">×</button>
+    </div>`;
+  }).join("");
+}
+
+$("list").onclick = async (e) => {
+  const row = e.target.closest(".task"); if (!row) return;
+  const id = row.dataset.id, act = e.target.closest("[data-act]")?.dataset.act;
+  const t = tasks.find(x => x.id === id);
+  if (act === "toggle") await updateDoc(doc(db, "tasks", id), { done: !t.done });
+  else if (act === "del") { if (confirm("Bu görev silinsin mi?")) await deleteDoc(doc(db, "tasks", id)); }
+  else if (act === "edit") openDlg(t);
+};
+
+// ---- Ekle / düzenle ----
+function openDlg(t) {
+  editingId = t?.id || null;
+  $("dlgTitle").textContent = t ? "Görevi düzenle" : "Yeni görev";
+  $("fWho").innerHTML = PEOPLE.map(p => `<option value="${esc(p.email)}">${esc(p.name)}</option>`).join("");
+  $("fTitle").value = t?.title || "";
+  $("fWho").value = t?.who || me.email;
+  $("fDue").value = t?.due || "";
+  $("fNote").value = t?.note || "";
+  $("dlg").showModal();
+  if (!t) $("fTitle").focus();
+}
+$("fab").onclick = () => openDlg(null);
+$("cancel").onclick = () => $("dlg").close();
+$("form").onsubmit = async (e) => {
+  e.preventDefault();
+  const data = { title: $("fTitle").value.trim(), who: $("fWho").value, due: $("fDue").value || "", note: $("fNote").value.trim() };
+  if (!data.title) return;
+  try {
+    if (editingId) await updateDoc(doc(db, "tasks", editingId), data);
+    else await addDoc(tasksCol, { ...data, done: false, createdBy: me.email, createdAt: serverTimestamp() });
+    $("dlg").close();
+  } catch (err) { alert("Kaydedilemedi: " + (err.code || err.message)); }
+};
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
+</script>
+</body>
+</html>
