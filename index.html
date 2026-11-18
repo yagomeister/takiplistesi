@@ -45,6 +45,18 @@
   .row button { flex:1; padding:12px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--ink); font-size:15px; }
   .row .primary { background:var(--accent); color:#fff; border-color:var(--accent); }
   .err { color:var(--danger); font-size:14px; margin-top:14px; }
+  .tabs { display:flex; gap:8px; margin-bottom:10px; }
+  .tab { flex:1; padding:10px; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:10px; font-size:15px; }
+  .tab.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .badge { background:var(--danger); color:#fff; border-radius:999px; font-size:11px; padding:1px 7px; margin-left:6px; }
+  #chat { padding-bottom:64px; }
+  .msg { max-width:82%; margin:6px 0; padding:8px 12px; border-radius:14px; background:var(--card); border:1px solid var(--line); word-break:break-word; white-space:pre-wrap; }
+  .msg.mine { margin-left:auto; background:var(--accent); color:#fff; border-color:var(--accent); }
+  .msg .who { font-size:11px; opacity:.7; margin-bottom:2px; }
+  .msg .time { font-size:10px; opacity:.65; margin-top:3px; text-align:right; }
+  .chatbar { position:fixed; left:0; right:0; bottom:0; background:var(--bg); border-top:1px solid var(--line); padding:10px 12px calc(10px + env(safe-area-inset-bottom)); display:flex; gap:8px; z-index:6; }
+  .chatbar input { flex:1; }
+  .chatbar button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:0 18px; font-size:15px; }
   .hidden { display:none !important; }
 </style>
 </head>
@@ -67,8 +79,23 @@
   </section>
 
   <section id="app" class="hidden">
-    <div class="filters" id="filters"></div>
-    <div id="list"></div>
+    <div class="tabs">
+      <button class="tab on" id="tabTasks" type="button">Görevler</button>
+      <button class="tab" id="tabChat" type="button">Sohbet<span class="badge hidden" id="badge"></span></button>
+    </div>
+
+    <div id="tasksView">
+      <div class="filters" id="filters"></div>
+      <div id="list"></div>
+    </div>
+
+    <div id="chat" class="hidden">
+      <div id="msgs"></div>
+      <form class="chatbar" id="chatForm">
+        <input type="text" id="msgInput" maxlength="1000" placeholder="Mesaj yaz..." autocomplete="off">
+        <button type="submit">Gönder</button>
+      </form>
+    </div>
   </section>
 </main>
 
@@ -96,16 +123,17 @@
 import { firebaseConfig, PEOPLE, EMAIL_DOMAIN } from "./config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, serverTimestamp, query, orderBy, limitToLast } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const $ = (id) => document.getElementById(id);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const tasksCol = collection(db, "tasks");
+const msgsCol = collection(db, "messages");
 
 const nameOf = (email) => (PEOPLE.find(p => p.email.toLowerCase() === (email||"").toLowerCase())?.name) || email || "—";
-let me = null, tasks = [], filter = "bekleyen", editingId = null, unsub = null;
+let me = null, tasks = [], msgs = [], view = "gorevler", filter = "bekleyen", editingId = null, unsubs = [];
 
 // ---- Giriş ----
 // Kullanıcı adı, arka planda "kullaniciadi@EMAIL_DOMAIN" biçimine çevrilir.
@@ -130,7 +158,7 @@ $("loginForm").onsubmit = async (e) => {
 $("logout").onclick = () => signOut(auth);
 
 onAuthStateChanged(auth, (user) => {
-  if (unsub) { unsub(); unsub = null; }
+  unsubs.forEach(u => u()); unsubs = []; msgs = [];
   const allowed = user && PEOPLE.some(p => p.email.toLowerCase() === (user.email||"").toLowerCase());
   if (user && !allowed) {
     $("loginErr").textContent = "Bu hesap uygulamaya erişemez.";
@@ -139,16 +167,75 @@ onAuthStateChanged(auth, (user) => {
   me = allowed ? user : null;
   $("login").classList.toggle("hidden", !!me);
   $("app").classList.toggle("hidden", !me);
-  $("fab").classList.toggle("hidden", !me);
+  $("fab").classList.toggle("hidden", !me || view === "sohbet");
   $("logout").classList.toggle("hidden", !me);
   if (me) {
-    unsub = onSnapshot(tasksCol, (snap) => {
+    setView("gorevler");
+    unsubs.push(onSnapshot(tasksCol, (snap) => {
       tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       render();
-    }, (err) => { $("list").innerHTML = `<div class="empty">Veriler okunamadı: ${err.code}</div>`; });
+    }, (err) => { $("list").innerHTML = `<div class="empty">Veriler okunamadı: ${err.code}</div>`; }));
+    unsubs.push(onSnapshot(query(msgsCol, orderBy("createdAt"), limitToLast(200)), (snap) => {
+      msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderChat();
+    }, (err) => { $("msgs").innerHTML = `<div class="empty">Mesajlar okunamadı: ${err.code}</div>`; }));
     render();
   }
 });
+
+// ---- Sohbet ----
+const SEEN_KEY = "chatSeen";
+const getSeen = () => { try { return Number(localStorage.getItem(SEEN_KEY)) || 0; } catch { return 0; } };
+const setSeen = (t) => { try { localStorage.setItem(SEEN_KEY, String(t)); } catch {} };
+const tsOf = (m) => m.createdAt?.toMillis?.() ?? Date.now();
+
+function setView(v) {
+  view = v;
+  $("tasksView").classList.toggle("hidden", v !== "gorevler");
+  $("chat").classList.toggle("hidden", v !== "sohbet");
+  $("tabTasks").classList.toggle("on", v === "gorevler");
+  $("tabChat").classList.toggle("on", v === "sohbet");
+  $("fab").classList.toggle("hidden", !me || v === "sohbet");
+  renderChat();
+}
+$("tabTasks").onclick = () => setView("gorevler");
+$("tabChat").onclick = () => setView("sohbet");
+
+function renderChat() {
+  if (!me) return;
+  const mine = (m) => (m.from || "").toLowerCase() === me.email.toLowerCase();
+  if (view === "sohbet") {
+    const last = msgs.length ? Math.max(...msgs.map(tsOf)) : 0;
+    if (last) setSeen(last);
+    $("badge").classList.add("hidden");
+    const today = new Date().toDateString();
+    $("msgs").innerHTML = msgs.length ? msgs.map(m => {
+      const d = new Date(tsOf(m));
+      const hm = d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+      const when = d.toDateString() === today ? hm : d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" }) + " " + hm;
+      return `<div class="msg ${mine(m) ? "mine" : ""}">
+        ${mine(m) ? "" : `<div class="who">${esc(nameOf(m.from))}</div>`}
+        <div>${esc(m.text)}</div>
+        <div class="time">${when}</div>
+      </div>`;
+    }).join("") : `<div class="empty">Henüz mesaj yok.</div>`;
+    window.scrollTo(0, document.body.scrollHeight);
+  } else {
+    const seen = getSeen();
+    const n = msgs.filter(m => !mine(m) && tsOf(m) > seen).length;
+    $("badge").textContent = n;
+    $("badge").classList.toggle("hidden", n === 0);
+  }
+}
+
+$("chatForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $("msgInput").value.trim();
+  if (!text) return;
+  $("msgInput").value = "";
+  try { await addDoc(msgsCol, { text, from: me.email, createdAt: serverTimestamp() }); }
+  catch (err) { $("msgInput").value = text; alert("Gönderilemedi: " + (err.code || err.message)); }
+};
 
 // ---- Liste ----
 const FILTERS = [["bekleyen","Bekleyenler"],["benim","Benim"],["biten","Bitenler"],["hepsi","Hepsi"]];
