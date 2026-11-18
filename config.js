@@ -1,16 +1,12 @@
-// 1) Firebase kurulumundan sonra aşağıdaki firebaseConfig bloğunu kendi değerlerinizle değiştirin.
-// 2) PEOPLE kısmına ikinizin adını ve Google e-posta adresini yazın.
-
 export const firebaseConfig = {
-  apiKey: "BURAYA",
-  authDomain: "BURAYA.firebaseapp.com",
-  projectId: "BURAYA",
-  storageBucket: "BURAYA.appspot.com",
-  messagingSenderId: "BURAYA",
-  appId: "BURAYA"
+  apiKey: "AIzaSyAGtw7G9IyfylLe7EF3kR9ZvuU_3-_nF_w",
+  authDomain: "takip-listesi-2b01a.firebaseapp.com",
+  projectId: "takip-listesi-2b01a",
+  storageBucket: "takip-listesi-2b01a.firebasestorage.app",
+  messagingSenderId: "785563920465",
+  appId: "1:785563920465:web:20a9d7acbae356af067070"
 };
 
 export const PEOPLE = [
-  { name: "Kişi 1", email: "birinci@gmail.com" },
-  { name: "Kişi 2", email: "ikinci@gmail.com" }
+  { name: "Yağız", email: "yagizaltinkok96@gmail.com" }
 ];
