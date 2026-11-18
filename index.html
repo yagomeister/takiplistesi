@@ -50,7 +50,8 @@
   .tab.on { background:var(--accent); color:#fff; border-color:var(--accent); }
   .badge { background:var(--danger); color:#fff; border-radius:999px; font-size:11px; padding:1px 7px; margin-left:6px; }
   #chat { padding-bottom:64px; }
-  .msg { max-width:82%; margin:6px 0; padding:8px 12px; border-radius:14px; background:var(--card); border:1px solid var(--line); word-break:break-word; white-space:pre-wrap; }
+  .msg { max-width:82%; margin:6px 0; padding:8px 12px; border-radius:14px; background:var(--card); border:1px solid var(--line); word-break:break-word; }
+  .msg .txt { white-space:pre-wrap; }
   .msg.mine { margin-left:auto; background:var(--accent); color:#fff; border-color:var(--accent); }
   .msg .who { font-size:11px; opacity:.7; margin-bottom:2px; }
   .msg .time { font-size:10px; opacity:.65; margin-top:3px; text-align:right; }
@@ -215,7 +216,7 @@ function renderChat() {
       const when = d.toDateString() === today ? hm : d.toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" }) + " " + hm;
       return `<div class="msg ${mine(m) ? "mine" : ""}">
         ${mine(m) ? "" : `<div class="who">${esc(nameOf(m.from))}</div>`}
-        <div>${esc(m.text)}</div>
+        <div class="txt">${esc(m.text)}</div>
         <div class="time">${when}</div>
       </div>`;
     }).join("") : `<div class="empty">Henüz mesaj yok.</div>`;
